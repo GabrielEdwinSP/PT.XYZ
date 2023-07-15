@@ -1,0 +1,193 @@
+@startuml
+'''''''''''''''''''''''''''''''''''''''''''''''''
+' define diagram participants
+' http://plantuml.com/skinparam
+'''''''''''''''''''''''''''''''''''''''''''''''''
+
+actor Requestor as requestor #DeepSkyBlue
+
+box "Microservice" #PowderBlue
+entity "Login" as login #DeepSkyBlue
+entity "biometric" as biometric #DeepSkyBlue
+' entity "Push_notif_email" as push_notif_email #DeepSkyBlue
+database "customer" as db_customer #DeepSkyBlue
+database "counter_failed" as db_counter_failed #DeepSkyBlue
+endbox
+
+
+' box "Surrounding System" #OldLace
+' entity "Dukcapil" as dukcapil #STRATEGY
+' endbox
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''
+' formatting options
+'''''''''''''''''''''''''''''''''''''''''''''''''
+hide footbox
+'autonumber
+skinparam defaultFontName Comic Sans MS
+skinparam sequence {
+    ParticipantFontSize 15
+    ActorFontSize 15
+    ArrowFontName Comic Sans MS
+    ParticipantFontName Comic Sans MS
+}
+
+'''''''''''''''''''''''''''''''''''''''''''''''''
+' Microservice Logic Goes Here
+'''''''''''''''''''''''''''''''''''''''''''''''''
+== Login Preparation ==
+
+requestor -> login : CheckExistingAccount(CheckExistingAccoungRequest)
+activate login
+
+group Check Account Existing
+    login -> db_customer : getAccount(CIF)
+    activate db_customer
+    note left of db_customer
+        SELECT CIF
+        FROM customer 
+        WHERE CIF = Request.CIF 
+        AND IsActive = "TRUE"
+    end note
+    db_customer --> login: getAccountMethod
+    deactivate db_customer
+
+    break if CIF = ""
+        login -> requestor : Error 401, (Does not meet this User in Database)
+    end
+end
+
+group Check Biometric
+    login -> biometric : getStatusBiometric(DeviceId)
+    activate biometric
+    note left of biometric
+       Sample Request API : GET biometric/v1/get-status/remaining?DeviceId='DeviceId'
+    end note
+    biometric --> login: getStatusBiometric
+    deactivate biometric
+
+    break if DeviceId = ""
+        login -> requestor : Error 404, (Device not found)
+    end
+    break if BiometricApp = TRUE AND BiometricDevice = FALSE
+        login -> requestor : Error 404, (Device need to activated Biometric on device)
+    end
+    break if BiometricApp = FALSE AND BiometricDevice = TRUE
+        login -> requestor : Error 404, (Device need to activated Biometric on application)
+    end
+end
+
+group Check Counter Failed On Biometric
+    login -> db_counter_failed : getCounterBiometric(CustomerId)
+    activate db_counter_failed
+    note left of db_counter_failed
+        SELECT COUNT(counterBiometric) AS Counter_Biometric
+        FROM counter_failed 
+        WHERE customerId = request.CustomerId
+    end note
+    db_counter_failed --> login: responseCounterBiometric
+    deactivate db_counter_failed
+
+    break if CustomerId = ""
+        login -> requestor : Error 401, (Does not meet this User in Database)
+    end
+end
+
+group Create Counter Failed On Biometric
+    login -> db_counter_failed : POSTCounterBiometric(counterBiometric)
+    activate db_counter_failed
+    note left of db_counter_failed
+        INSERT INTO counter_failed (column1, column2, column3, ...)
+        VALUES (value1, value2, value3, ...); 
+    end note
+    db_counter_failed --> login: responseCounterBiometric
+    deactivate db_counter_failed
+
+    break if CustomerId = ""
+        login -> requestor : Error 401, (Does not meet this User in Database)
+    end
+end
+
+group Update Counter Failed On Biometric
+    login -> db_counter_failed : POSTCounterBiometric(counterBiometric)
+    activate db_counter_failed
+    note left of db_counter_failed
+        UPDATE counter_failed
+        SET column1 = value1, column2 = value2, ...
+        WHERE customerId = Request.CustomerId;
+    end note
+    db_counter_failed --> login: responseCounterBiometric
+    deactivate db_counter_failed
+
+    break if CustomerId = ""
+        login -> requestor : Error 401, (Does not meet this User in Database)
+    end
+end
+
+group Check Counter Failed On Password
+    login -> db_counter_failed : getCounterPassword(CustomerId)
+    activate db_counter_failed
+    note left of db_counter_failed
+        SELECT COUNT(counterPassword) AS Counter_Password
+        FROM counter_failed 
+        WHERE customerId = request.CustomerId
+    end note
+    db_counter_failed --> login: responseCounterPassword
+    deactivate db_counter_failed
+
+    break if CustomerId = ""
+        login -> requestor : Error 401, (Does not meet this User in Database)
+    end
+end
+
+group Create Counter Failed On Password
+    login -> db_counter_failed : POSTCounterPassword(counterPassword)
+    activate db_counter_failed
+    note left of db_counter_failed
+        INSERT INTO counter_failed (column1, column2, column3, ...)
+        VALUES (value1, value2, value3, ...); 
+    end note
+    db_counter_failed --> login: responseCounterPassword
+    deactivate db_counter_failed
+
+    break if CustomerId = ""
+        login -> requestor : Error 401, (Does not meet this User in Database)
+    end
+end
+
+group Update Counter Failed On Password
+    login -> db_counter_failed : POSTCounterPassword(counterPassword)
+    activate db_counter_failed
+    note left of db_counter_failed
+        UPDATE counter_failed
+        SET column1 = value1, column2 = value2, ...
+        WHERE customerId = Request.CustomerId;
+    end note
+    db_counter_failed --> login: responseCounterPassword
+    deactivate db_counter_failed
+
+    break if CustomerId = ""
+        login -> requestor : Error 401, (Does not meet this User in Database)
+    end
+end
+
+group Get Data Customer
+    login -> db_customer : getDataCustomer(customerRequest)
+    activate db_customer
+    note left of db_customer
+        SELECT id, cif
+        FROM customer 
+        WHERE password = request.Password
+    end note
+    login <-- db_customer : responseDataCustomer
+    deactivate db_customer
+    break password is null
+        login -> requestor : Error 401, (Does not meet this User in Dukcapil)
+    end
+end
+
+login --> requestor: response
+deactivate login
+
+@enduml

@@ -1,0 +1,112 @@
+@startuml
+'''''''''''''''''''''''''''''''''''''''''''''''''
+' define diagram participants
+' http://plantuml.com/skinparam
+'''''''''''''''''''''''''''''''''''''''''''''''''
+
+actor Requestor as requestor #DeepSkyBlue
+
+box "Microservice" #PowderBlue
+entity "Payment" as payment #DeepSkyBlue
+' entity "biometric" as biometric #DeepSkyBlue
+' entity "Push_notif_email" as push_notif_email #DeepSkyBlue
+database "application" as db_application #DeepSkyBlue
+database "payment" as db_payment #DeepSkyBlue
+endbox
+
+
+box "Surrounding System" #OldLace
+entity "Payment" as pymnt #STRATEGY
+endbox
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''
+' formatting options
+'''''''''''''''''''''''''''''''''''''''''''''''''
+hide footbox
+'autonumber
+skinparam defaultFontName Comic Sans MS
+skinparam sequence {
+    ParticipantFontSize 15
+    ActorFontSize 15
+    ArrowFontName Comic Sans MS
+    ParticipantFontName Comic Sans MS
+}
+
+'''''''''''''''''''''''''''''''''''''''''''''''''
+' Microservice Logic Goes Here
+'''''''''''''''''''''''''''''''''''''''''''''''''
+== payment Preparation ==
+
+requestor -> payment : CheckStatusPayment(CheckpaymentRequest)
+activate payment
+
+group Check payment response status
+    payment -> pymnt : GET payment/v1/status/remaining (id)
+    activate pymnt
+    note left of pymnt
+        GET payment/v1/status/remaining?id='id'
+    end note
+    pymnt --> payment: ResponseStatusPayment
+    deactivate pymnt
+
+    break if id = ""
+        payment -> requestor : Error 401, (Does not meet this application in Database)
+    end
+    break if ResponseStatusPayment = null
+        payment -> requestor : Error 500, (Server down)
+    end
+end
+
+group Transfer Payment
+    payment -> pymnt : GET payment/v1/status/remaining (id, value)
+    activate pymnt
+    note left of pymnt
+        GET payment/v1/status/remaining?request='request'
+    end note
+    pymnt --> payment: ResponseExistingpayment
+    deactivate pymnt
+
+    break if request.id = ""
+        payment -> requestor : Error 401, (Does not meet this application in Database)
+    end
+    break if request.value = ""
+        payment -> requestor : Error 403, (Value doesn't null)
+    end
+end
+
+group Create Payment
+    payment -> db_payment : postPayment(request)
+    activate db_payment
+    note left of db_payment
+        INSERT INTO payment (column1, column2, column3, ...)
+        VALUES (value1, value2, value3, ...); 
+    end note
+    db_payment --> payment: ResponseExistingpayment
+    deactivate db_payment
+
+    break if request.id = ""
+        payment -> requestor : Error 401, (Does not meet this application in Database)
+    end
+end
+
+group payment_status
+    payment -> db_payment : getStatusPayment(request)
+    activate db_payment
+    note left of db_payment
+        SELECT statusPayment 
+        FROM payment
+        WHERE applicationId = request.applicationId
+    end note
+    db_payment --> payment: ResponseExistingpayment
+    deactivate db_payment
+
+    break if request.id = ""
+        payment -> requestor : Error 401, (Does not meet this application in Database)
+    end
+end
+
+payment --> requestor: response
+deactivate payment
+
+@enduml

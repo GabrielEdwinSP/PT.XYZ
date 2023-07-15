@@ -1,0 +1,168 @@
+@startuml
+'''''''''''''''''''''''''''''''''''''''''''''''''
+' define diagram participants
+' http://plantuml.com/skinparam
+'''''''''''''''''''''''''''''''''''''''''''''''''
+
+actor Requestor as requestor #DeepSkyBlue
+
+box "Microservice" #PowderBlue
+entity "Installment" as installment #DeepSkyBlue
+entity "core" as core #DeepSkyBlue
+' entity "Push_notif_email" as push_notif_email #DeepSkyBlue
+database "application" as db_application #DeepSkyBlue
+' database "payment" as db_payment #DeepSkyBlue
+endbox
+
+
+box "Surrounding System" #OldLace
+entity "OJK" as ojk #STRATEGY
+endbox
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''
+' formatting options
+'''''''''''''''''''''''''''''''''''''''''''''''''
+hide footbox
+'autonumber
+skinparam defaultFontName Comic Sans MS
+skinparam sequence {
+    ParticipantFontSize 15
+    ActorFontSize 15
+    ArrowFontName Comic Sans MS
+    ParticipantFontName Comic Sans MS
+}
+
+'''''''''''''''''''''''''''''''''''''''''''''''''
+' Microservice Logic Goes Here
+'''''''''''''''''''''''''''''''''''''''''''''''''
+== Installment Preparation ==
+
+requestor -> installment : CheckInstallment(CheckinstallmentRequest)
+activate installment
+
+group Create Application
+    installment -> db_application : postApplication(request)
+    activate db_application
+    note left of db_application
+        INSERT INTO application (column1, column2, column3, ...)
+        VALUES (value1, value2, value3, ...); 
+    end note
+    db_application --> installment: ResponseApplication
+    deactivate db_application
+
+    break if CIF = ""
+        installment -> requestor : Error 401, (Does not meet this application in Database)
+    end
+end
+
+group Check application on Core Banking
+    installment -> core : CheckStatusOnCore(request)
+    activate core
+    note left of core
+        GET core/v1/statusNasabah/remaining?cif='cif'
+    end note
+    core --> installment: ResponseExistinginstallment
+    deactivate core
+
+    break if request.CIF= ""
+        installment -> requestor : Error 401, (Does not meet this application in Database)
+    end
+    break if request.DHN = TRUE
+        installment -> requestor : Error 403, (Daftar Hitam Nasional)
+    end
+    break if request.WO = TRUE
+        installment -> requestor : Error 403, (White Off)
+    end
+    break if request.NPF = TRUE
+        installment -> requestor : Error 403, (Non performing financing)
+    end
+end
+
+group Check application to OJK
+    installment -> ojk : GET IDEB/v1/status/remaining (NIK, Name)
+    activate ojk
+    note left of ojk
+         GET payment/v1/status/remaining?request='request'
+    end note
+    ojk --> installment: ResponseIDEB
+    deactivate ojk
+
+    break if request.NIK = ""
+        installment -> requestor : Error 401, (Does not meet this application in OJK)
+    end
+    break if request.Name = ""
+        installment -> requestor : Error 401, (Does not meet this application in OJK)
+    end
+    break if request.PPATK = TRUE
+        installment -> requestor : Error 403, (This user has Money Laundry)
+    end
+    break if request.BlacklistBI = TRUE
+        installment -> requestor : Error 403, (This user has blocked from BI)
+    end
+end
+
+group get Limit from application
+    installment -> db_application : getLimit(request)
+    activate db_application
+    note left of db_application
+        SELECT limit - request.plafond AS sisa 
+        FROM installment
+        WHERE applicationId = request.applicationId
+    end note
+    db_application --> installment: ResponseExistinginstallment
+    deactivate db_application
+
+    break if request.id = ""
+        installment -> requestor : Error 401, (Does not meet this application in Database)
+    end
+    break if sisa <= 0
+        installment -> requestor : Error 403, (Limit is not required)
+    end
+end
+
+group chek Angsuran from application
+    installment -> db_application : getAngsuran(request)
+    activate db_application
+    note left of db_application
+        SELECT angsuran
+        FROM installment
+        WHERE applicationId = request.applicationId
+    end note
+    db_application --> installment: ResponseExistinginstallment
+    deactivate db_application
+
+    break if request.id = ""
+        installment -> requestor : Error 401, (Does not meet this application in Database)
+    end
+    break if angsuran >= 0
+        installment -> requestor : Error 403, (Customer have existing loan)
+    end
+end
+
+group validate loan from application
+    installment -> db_application : getValidate(request)
+    activate db_application
+    note left of db_application
+        SELECT angsuran, tenor
+        FROM installment
+        WHERE applicationId = request.applicationId
+    end note
+    db_application --> installment: ResponseExistinginstallment
+    deactivate db_application
+
+    break if request.id = ""
+        installment -> requestor : Error 401, (Does not meet this application in Database)
+    end
+    break if request.tenor >= 1
+        installment -> requestor : Error 403, (Customer not allowed because tenor have more than 1 year)
+    end
+    break if request.plafond >= 12000000
+        installment -> requestor : Error 403, (Customer not allowed because plafond have more than 12000000)
+    end
+end
+
+installment --> requestor: response
+deactivate installment
+
+@enduml

@@ -1,0 +1,81 @@
+@startuml
+'''''''''''''''''''''''''''''''''''''''''''''''''
+' define diagram participants
+' http://plantuml.com/skinparam
+'''''''''''''''''''''''''''''''''''''''''''''''''
+
+actor Requestor as requestor #DeepSkyBlue
+
+box "Microservice" #PowderBlue
+entity "Debt" as debt #DeepSkyBlue
+' entity "biometric" as biometric #DeepSkyBlue
+' entity "Push_notif_email" as push_notif_email #DeepSkyBlue
+database "application" as db_application #DeepSkyBlue
+' database "counter_failed" as db_counter_failed #DeepSkyBlue
+endbox
+
+
+' box "Surrounding System" #OldLace
+' entity "Dukcapil" as dukcapil #STRATEGY
+' endbox
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''
+' formatting options
+'''''''''''''''''''''''''''''''''''''''''''''''''
+hide footbox
+'autonumber
+skinparam defaultFontName Comic Sans MS
+skinparam sequence {
+    ParticipantFontSize 15
+    ActorFontSize 15
+    ArrowFontName Comic Sans MS
+    ParticipantFontName Comic Sans MS
+}
+
+'''''''''''''''''''''''''''''''''''''''''''''''''
+' Microservice Logic Goes Here
+'''''''''''''''''''''''''''''''''''''''''''''''''
+== Debt Preparation ==
+
+requestor -> debt : CheckExistingDebt(CheckExistingDebtRequest)
+activate debt
+
+group Check Debt Existing
+    debt -> db_application : getDebt(debtRequest)
+    activate db_application
+    note left of db_application
+        SELECT totalAngsuran
+        FROM application 
+        WHERE CIF = Request.CIF 
+        AND applicationId = Request.ApplicationId
+    end note
+    db_application --> debt: ResponseExistingDebt
+    deactivate db_application
+
+    break if CIF = ""
+        debt -> requestor : Error 401, (Does not meet this application in Database)
+    end
+end
+
+group Check Limit Existing
+    debt -> db_application : getLimit(debtRequest)
+    activate db_application
+    note left of db_application
+        SELECT limit
+        FROM application 
+        WHERE CIF = Request.CIF 
+        AND applicationId = Request.ApplicationId
+    end note
+    db_application --> debt: ResponseExistingDebt
+    deactivate db_application
+
+    break if CIF = ""
+        debt -> requestor : Error 401, (Does not meet this application in Database)
+    end
+end
+
+debt --> requestor: response
+deactivate debt
+
+@enduml

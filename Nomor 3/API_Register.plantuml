@@ -1,0 +1,191 @@
+@startuml
+'''''''''''''''''''''''''''''''''''''''''''''''''
+' define diagram participants
+' http://plantuml.com/skinparam
+'''''''''''''''''''''''''''''''''''''''''''''''''
+
+actor Requestor as requestor #DeepSkyBlue
+
+box "Microservice" #PowderBlue
+entity "Register" as register #DeepSkyBlue
+entity "Push_notif_mobile" as push_notif_mobile #DeepSkyBlue
+entity "Push_notif_email" as push_notif_email #DeepSkyBlue
+database "customer" as db_customer #DeepSkyBlue
+database "customer_img" as db_customer_img #DeepSkyBlue
+endbox
+
+
+box "Surrounding System" #OldLace
+entity "Dukcapil" as dukcapil #STRATEGY
+endbox
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''
+' formatting options
+'''''''''''''''''''''''''''''''''''''''''''''''''
+hide footbox
+'autonumber
+skinparam defaultFontName Comic Sans MS
+skinparam sequence {
+    ParticipantFontSize 15
+    ActorFontSize 15
+    ArrowFontName Comic Sans MS
+    ParticipantFontName Comic Sans MS
+}
+
+'''''''''''''''''''''''''''''''''''''''''''''''''
+' Microservice Logic Goes Here
+'''''''''''''''''''''''''''''''''''''''''''''''''
+== Register Preparation ==
+
+requestor -> register : CheckExistingAccount(CheckExistingAccoungRequest)
+activate register
+
+group Check Account Existing
+    register -> db_customer : getAccount(CIF)
+    activate db_customer
+    note left of db_customer
+        SELECT CIF
+        FROM customer 
+        WHERE CIF = Request.CIF 
+        AND IsActive = "TRUE"
+    end note
+    db_customer --> register: getAccountMethod
+    deactivate db_customer
+
+    break if CIF = ""
+        register -> requestor : Error 401, (Does not meet this User in Database)
+    end
+end
+
+group Get Data Customer In Dukcapil
+    register -> dukcapil : getDataDukcapil(dukcapilRequest)
+    activate dukcapil
+    note left of dukcapil
+        Sample Request API : GET dukcapil/v1/get-data/remaining?NIK='NIK'
+    end note
+    register <-- dukcapil : responseDataDukcapil
+    deactivate dukcapil
+    break response is null
+        register -> requestor : Error 401, (Does not meet this User in Dukcapil)
+    end
+end
+
+group Check Status Customer In Dukcapil
+    register -> dukcapil : getValidateDukcapil(dukcapilRequest)
+    activate dukcapil
+    note left of dukcapil
+        Sample Request API : GET validate/v1/get-data/remaining?NIK='NIK'
+    end note
+    register <-- dukcapil : responseValidateDukcapil
+    deactivate dukcapil
+
+    break if dukcapil is null
+        register -> requestor : Error 401, (Does not meet this User in Dukcapil)
+    end
+    break if dukcapil is not matching
+        register -> requestor : Error 402, (Field request have not match)
+    end
+end
+
+
+group Create Customer
+    register -> db_customer : PostCustomer(customer)
+    activate db_customer
+    note left of db_customer
+        INSERT INTO customer (column1, column2, column3, ...)
+        VALUES (value1, value2, value3, ...); 
+    end note
+    register <-- db_customer : PostCustomerResponse
+    deactivate db_customer
+
+    break if CIF = ""
+        register -> requestor : Error 401, (Does not meet this User in Database)
+    end
+end
+
+group Create Customer Image
+    register -> db_customer_img : PostCustomerImg(customerId)
+    activate db_customer_img
+    note left of db_customer_img
+        INSERT INTO customer_img (column1, column2, column3, ...)
+        VALUES (value1, value2, value3, ...); 
+    end note
+    register <-- db_customer_img : PostCustomerResponse
+    deactivate db_customer_img
+
+    break if customerId = ""
+        register -> requestor : Error 401, (Does not meet this User in Database)
+    end
+end
+
+group Update Customer
+    register -> db_customer : UpdateCustomer(customer)
+    activate db_customer
+    note left of db_customer
+        UPDATE customer
+        SET column1 = value1, column2 = value2, ...
+        WHERE CIF = Request.CIF;
+    end note
+    register <-- db_customer : PostCustomerResponse
+    deactivate db_customer
+
+    break if CIF = ""
+        register -> requestor : Error 401, (Does not meet this User in Database)
+    end
+    break if Id = NULL
+        register -> requestor : Error 402, (Conflict data when update into Database)
+    end
+end
+
+group Update Customer Image
+    register -> db_customer_img : UpdateCustomerImg(customerId)
+    activate db_customer_img
+    note left of db_customer_img
+        UPDATE customer_Img
+        SET column1 = value1, column2 = value2, ...
+        WHERE CIF = Request.CustomerId;
+    end note
+    register <-- db_customer_img : PostCustomerResponse
+    deactivate db_customer_img
+
+    break if CustomerId = ""
+        register -> requestor : Error 401, (Does not meet this User in Database)
+    end
+    break if Id = NULL
+        register -> requestor : Error 402, (Conflict data when update into Database)
+    end
+end
+
+group Push Notification Mobile
+    register -> push_notif_mobile : GetPushNotification(Request)
+    activate push_notif_mobile
+    note left of push_notif_mobile
+        Sample Request API : POST pushmobile/v1/push-data/remaining?phone='089765434557'
+    end note
+    register <-- push_notif_mobile : PostPushNotificationMobile
+    deactivate push_notif_mobile
+
+    break if phone = ""
+        register -> requestor : Error 404, (Phone doesn't null)
+    end
+end
+
+group Push Notification Email
+    register -> push_notif_email : GetPushNotification(Request)
+    activate push_notif_email
+    note left of push_notif_email
+        Sample Request API : POST pushemail/v1/push-data/remaining?email='email@.com'
+    end note
+    register <-- push_notif_email : PostPushNotificationEmail
+    deactivate push_notif_email
+
+    break if phone = ""
+        register -> requestor : Error 404, (Email doesn't null)
+    end
+end
+
+register --> requestor: response
+deactivate register
+
+@enduml
